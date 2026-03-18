@@ -1,27 +1,72 @@
+# =========================
+# IMPORT
+# =========================
+from fastapi import FastAPI
 import joblib
 import numpy as np
 
-# load model
+# =========================
+# LOAD MODEL
+# =========================
 model = joblib.load("../model/fraud_model.pkl")
+scaler = joblib.load("../model/scaler.pkl")
 
-def detect_transaction(transaction):
-    """
-    transaction: list [V1, V2, ..., Amount]
-    """
-    transaction = np.array(transaction).reshape(1, -1)
+# =========================
+# INIT APP
+# =========================
+app = FastAPI()
 
-    result = model.predict(transaction)
+# =========================
+# ROOT
+# =========================
+@app.get("/")
+def home():
+    return {"message": "Agent AI Fraud Detection API running"}
+
+# =========================
+# PREDICT FRAUD
+# =========================
+@app.post("/predict")
+def predict(data: dict):
+    """
+    Input:
+    {
+        "transaction": [30 features]
+    }
+    """
+
+    tx = data["transaction"]
+
+    if len(tx) != 30:
+        return {"error": "Transaction must have 30 features"}
+
+    tx = np.array(tx).reshape(1, -1)
+    tx = scaler.transform(tx)
+
+    result = model.predict(tx)
 
     if result[0] == -1:
-        return True  # fraud
-    return False
-
-
-# test
-if __name__ == "__main__":
-    test_tx = np.random.rand(30)  # fake transaction
-
-    if detect_transaction(test_tx):
-        print("🚨 Fraud detected")
+        return {
+            "fraud": True,
+            "message": "🚨 Fraud detected"
+        }
     else:
-        print("✅ Normal transaction")
+        return {
+            "fraud": False,
+            "message": "✅ Normal"
+        }
+
+# =========================
+# OPTIONAL: AUTO GENERATE TRANSACTION
+# =========================
+@app.get("/simulate")
+def simulate():
+    tx = np.random.rand(30)
+
+    tx_scaled = scaler.transform(tx.reshape(1, -1))
+    result = model.predict(tx_scaled)
+
+    return {
+        "transaction": tx.tolist(),
+        "fraud": result[0] == -1
+    }
