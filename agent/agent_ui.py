@@ -1,91 +1,126 @@
 import streamlit as st
-import random
 import time
+import json
+from agent_node import AgentNode, logs, attack_nodes
 
-NUM_NODES = 10
+NUM_NODES = 5
 
-# trạng thái node
+# INIT
 if "nodes" not in st.session_state:
-    st.session_state.nodes = [False] * NUM_NODES
-    st.session_state.nodes[0] = True
+    st.session_state.nodes = [
+        AgentNode(i, 5000 + i) for i in range(NUM_NODES)
+    ]
+    st.session_state.nodes[0].informed = True
 
-if "mode" not in st.session_state:
-    st.session_state.mode = "PUSH"
+if "running" not in st.session_state:
+    st.session_state.running = False
 
-# =========================
+if "history" not in st.session_state:
+    st.session_state.history = []
+
 # UI
+st.title("🤖 AI Gossip Control System")
+
+mode = st.selectbox("Chọn Gossip Mode", ["PUSH", "PULL"])
+
+col1, col2 = st.columns(2)
+
+if col1.button("▶️ Start"):
+    st.session_state.running = True
+
+if col2.button("⏹ Stop"):
+    st.session_state.running = False
+
 # =========================
-st.title("🤖 AI Agent - Gossip System")
+# ACTION BUTTONS
+# =========================
+st.subheader("⚙️ Control Actions")
 
-# chọn mode
-mode = st.selectbox("Chọn chế độ Gossip", ["PUSH", "PULL"])
+colA, colB, colC = st.columns(3)
 
-st.session_state.mode = mode
+shutdown = colA.button("🛑 Shutdown")
+counter = colB.button("⚔️ Counter Attack")
+backup = colC.button("🟡 Backup Mode")
 
 # =========================
-# HIỂN THỊ NODE
+# DISPLAY NODES
 # =========================
-st.subheader("📡 Trạng thái Nodes")
+st.subheader("📡 Network")
 
-cols = st.columns(5)
+cols = st.columns(NUM_NODES)
 
-for i in range(NUM_NODES):
-    status = st.session_state.nodes[i]
+for i, node in enumerate(st.session_state.nodes):
 
-    color = "green" if status else "red"
+    if i in attack_nodes:
+        color = "orange"
+    else:
+        color = "green" if node.informed else "red"
 
-    cols[i % 5].markdown(
-        f"<div style='background-color:{color};padding:10px;border-radius:10px;text-align:center'>Node {i}</div>",
+    cols[i].markdown(
+        f"<div style='background:{color};padding:15px;text-align:center'>Node {i}</div>",
         unsafe_allow_html=True
     )
 
 # =========================
-# GOSSIP LOGIC
+# LOG DISPLAY
 # =========================
-def gossip_push():
-    new_nodes = st.session_state.nodes.copy()
-
-    for i in range(NUM_NODES):
-        if st.session_state.nodes[i]:
-            targets = random.sample(range(NUM_NODES), 2)
-
-            for t in targets:
-                new_nodes[t] = True
-
-    st.session_state.nodes = new_nodes
-
-
-def gossip_pull():
-    new_nodes = st.session_state.nodes.copy()
-
-    for i in range(NUM_NODES):
-        if not st.session_state.nodes[i]:
-            target = random.randint(0, NUM_NODES - 1)
-
-            if st.session_state.nodes[target]:
-                new_nodes[i] = True
-
-    st.session_state.nodes = new_nodes
-
+st.subheader("📜 Logs")
+st.write(logs[-10:])
 
 # =========================
-# ATTACK SIMULATION
+# METRICS CHART
 # =========================
-if st.button("🚨 Simulate Attack"):
-    target = random.randint(0, NUM_NODES - 1)
-    st.session_state.nodes[target] = True
-    st.warning(f"Node {target} bị tấn công!")
+st.subheader("📊 Push vs Pull Analysis")
+
+try:
+    with open("metrics.json") as f:
+        metrics = json.load(f)
+except:
+    metrics = {"push": 0, "pull": 0}
+
+st.bar_chart(metrics)
 
 # =========================
-# RUN LOOP
+# PROPAGATION CHART
 # =========================
-if st.button("▶️ Start System"):
-    for _ in range(20):
+informed = sum(n.informed for n in st.session_state.nodes)
+st.session_state.history.append(informed)
 
-        if st.session_state.mode == "PUSH":
-            gossip_push()
-        else:
-            gossip_pull()
+st.subheader("📈 Propagation")
+st.line_chart(st.session_state.history)
 
-        time.sleep(0.5)
-        st.rerun()
+# =========================
+# MAIN LOOP
+# =========================
+if st.session_state.running:
+
+    # SHUTDOWN
+    if shutdown:
+        st.session_state.running = False
+        st.error("System shutdown")
+
+    # COUNTER ATTACK
+    elif counter:
+        for node in st.session_state.nodes:
+            if node.informed:
+                node.push(st.session_state.nodes)
+
+    # BACKUP
+    elif backup:
+        time.sleep(1)
+
+    # NORMAL
+    else:
+        for node in st.session_state.nodes:
+
+            if node.detect():
+                node.informed = True
+
+            if node.informed:
+                if mode == "PUSH":
+                    node.push(st.session_state.nodes)
+                else:
+                    node.pull(st.session_state.nodes)
+
+    time.sleep(0.5)
+    st.rerun()
